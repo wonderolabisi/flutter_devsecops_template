@@ -11,3 +11,6 @@ dependencies:
     sdk: flutter
 
   # Add other dependencies here
+  dev_dependencies:
+  flutter_test:
+    sdk: flutter
