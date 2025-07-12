@@ -9,8 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
   # Add other dependencies here
-  dev_dependencies:
+
+dev_dependencies:
   flutter_test:
     sdk: flutter
