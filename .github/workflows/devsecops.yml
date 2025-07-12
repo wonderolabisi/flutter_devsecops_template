@@ -28,7 +28,7 @@ jobs:
         run: flutter test
 
       - name: Secret Scan with TruffleHog
-        uses: trufflesecurity/trufflehog@v3.66.4
+        uses: trufflesecurity/trufflehog@main
         with:
           path: .
           base: HEAD~10
@@ -38,7 +38,7 @@ jobs:
         run: flutter build apk
 
       - name: Upload Build Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: flutter-apk
           path: build/app/outputs/flutter-apk/app-release.apk
