@@ -59,8 +59,8 @@ flutter build apk --release
 - **Automated Updates**: Dependabot keeps dependencies secure
 
 ## 📋 Requirements
-- Flutter 3.24.5+
-- Dart SDK (included with Flutter)
+- Flutter 3.24.0+
+- Dart SDK 3.5.0+ (included with Flutter)
 - Java 17+ (for Android builds)
 
 ## 🤝 Contributing
