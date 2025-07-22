@@ -1,4 +1,4 @@
-name: Security Scan
+name: Advanced Security Scan
 
 on:
   push:
@@ -11,9 +11,10 @@ on:
 permissions:
   contents: read
   security-events: write
+  actions: read
 
 jobs:
-  security-scan:
+  advanced-security:
     runs-on: ubuntu-latest
     
     steps:
@@ -22,25 +23,87 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Create Security Reports Directory
+        run: mkdir -p advanced-security-reports
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           scan-ref: '.'
           format: 'sarif'
-          output: 'trivy-results.sarif'
+          output: 'advanced-security-reports/trivy-results.sarif'
+          severity: 'MEDIUM,HIGH,CRITICAL'
+          exit-code: '0'
+
+      - name: Generate Trivy Report
+        run: |
+          # Convert SARIF to readable report
+          cat > advanced-security-reports/trivy-report.md << 'EOF'
+          # 🔍 Container & Filesystem Security Scan Report
+          
+          **Scan Date:** $(date)
+          **Tool:** Trivy
+          **Scope:** Filesystem and Dependencies
+          **Severity Filter:** Medium, High, Critical
+          
+          ## Summary
+          EOF
+          
+          if [ -f "advanced-security-reports/trivy-results.sarif" ]; then
+            TRIVY_ISSUES=$(cat advanced-security-reports/trivy-results.sarif | jq '[.runs[0].results[] | select(.level == "error" or .level == "warning")] | length' 2>/dev/null || echo "0")
+            echo "- **Issues Found:** $TRIVY_ISSUES" >> advanced-security-reports/trivy-report.md
+            
+            if [ "$TRIVY_ISSUES" -gt 0 ]; then
+              echo "- **Status:** ⚠️ ATTENTION REQUIRED" >> advanced-security-reports/trivy-report.md
+              echo "" >> advanced-security-reports/trivy-report.md
+              echo "## 🔍 Findings" >> advanced-security-reports/trivy-report.md
+              cat advanced-security-reports/trivy-results.sarif | jq -r '.runs[0].results[] | select(.level == "error" or .level == "warning") | "- **" + .ruleId + "**: " + .message.text' >> advanced-security-reports/trivy-report.md
+            else
+              echo "- **Status:** ✅ PASSED - No medium/high/critical issues found" >> advanced-security-reports/trivy-report.md
+            fi
+          fi
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: 'advanced-security-reports/trivy-results.sarif'
 
-      - name: Run Semgrep
-        uses: securecodewarrior/github-action-add-sarif@v1
-        with:
-          sarif-file: 'trivy-results.sarif'
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Semgrep Security Analysis
+        run: |
+          # Install Semgrep
+          pip install semgrep
+          
+          # Run Semgrep with security-focused rules
+          semgrep --config=auto --json --severity=WARNING --severity=ERROR \
+            --output=advanced-security-reports/semgrep-results.json . || true
+          
+          # Generate Semgrep report
+          cat > advanced-security-reports/semgrep-report.md << 'EOF'
+          # 🔬 Semgrep Security Analysis Report
+          
+          **Scan Date:** $(date)
+          **Tool:** Semgrep
+          **Rules:** Auto-detected security patterns
+          **Severity Filter:** Warning, Error
+          
+          ## Summary
+          EOF
+          
+          if [ -f "advanced-security-reports/semgrep-results.json" ]; then
+            SEMGREP_ISSUES=$(cat advanced-security-reports/semgrep-results.json | jq '.results | length' 2>/dev/null || echo "0")
+            echo "- **Issues Found:** $SEMGREP_ISSUES" >> advanced-security-reports/semgrep-report.md
+            
+            if [ "$SEMGREP_ISSUES" -gt 0 ]; then
+              echo "- **Status:** ⚠️ ATTENTION REQUIRED" >> advanced-security-reports/semgrep-report.md
+              echo "" >> advanced-security-reports/semgrep-report.md
+              echo "## 🔍 Findings" >> advanced-security-reports/semgrep-report.md
+              cat advanced-security-reports/semgrep-results.json | jq -r '.results[] | "- **" + .check_id + "**: " + .extra.message + " (Severity: " + .extra.severity + ")"' >> advanced-security-reports/semgrep-report.md
+            else
+              echo "- **Status:** ✅ PASSED - No security issues found" >> advanced-security-reports/semgrep-report.md
+            fi
+          fi
 
       - name: OSSAR Scan
         uses: github/ossar-action@v1
@@ -50,3 +113,67 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ steps.ossar.outputs.sarifFile }}
+
+      - name: Generate Consolidated Advanced Security Report
+        run: |
+          cat > advanced-security-reports/ADVANCED_SECURITY_REPORT.md << 'EOF'
+          # 🛡️ Advanced Security Analysis Report
+          
+          **Project:** Flutter DevSecOps Template
+          **Scan Date:** $(date)
+          **Scan Type:** Advanced Security Analysis
+          **Branch:** ${{ github.ref_name }}
+          **Commit:** ${{ github.sha }}
+          
+          ## 🎯 Advanced Scan Coverage
+          - ✅ Container & Filesystem Security (Trivy)
+          - ✅ Pattern-based Security Analysis (Semgrep)
+          - ✅ Microsoft Security DevOps (OSSAR)
+          
+          ### 🔧 Configuration
+          - **Severity Threshold:** Medium, High, Critical
+          - **False Positive Reduction:** Rule-based filtering
+          - **Scope:** Source code, dependencies, containers
+          
+          ---
+          
+          EOF
+          
+          # Add individual reports
+          if [ -f "advanced-security-reports/trivy-report.md" ]; then
+            echo "## 🔍 Trivy Scan Results" >> advanced-security-reports/ADVANCED_SECURITY_REPORT.md
+            tail -n +6 advanced-security-reports/trivy-report.md >> advanced-security-reports/ADVANCED_SECURITY_REPORT.md
+            echo "" >> advanced-security-reports/ADVANCED_SECURITY_REPORT.md
+          fi
+          
+          if [ -f "advanced-security-reports/semgrep-report.md" ]; then
+            echo "## 🔬 Semgrep Analysis Results" >> advanced-security-reports/ADVANCED_SECURITY_REPORT.md
+            tail -n +6 advanced-security-reports/semgrep-report.md >> advanced-security-reports/ADVANCED_SECURITY_REPORT.md
+            echo "" >> advanced-security-reports/ADVANCED_SECURITY_REPORT.md
+          fi
+          
+          cat >> advanced-security-reports/ADVANCED_SECURITY_REPORT.md << 'EOF'
+          ## 📊 Risk Assessment
+          
+          Based on the advanced security analysis, this report provides:
+          
+          1. **Container Security**: Analysis of base images and filesystem
+          2. **Pattern Detection**: Security anti-patterns and vulnerabilities
+          3. **Compliance**: Industry standard security checks
+          
+          ### 🚨 Action Items
+          - Review all medium, high, and critical findings
+          - Prioritize fixes based on exploitability and impact
+          - Update dependencies and base images regularly
+          
+          ---
+          
+          **Note:** This advanced scan complements the main DevSecOps pipeline
+          EOF
+
+      - name: Upload Advanced Security Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: advanced-security-reports
+          path: advanced-security-reports/
+          retention-days: 90

@@ -1,0 +1,95 @@
+# Security Scanning Configuration
+# This file defines rules and filters for security scanning tools
+
+# TruffleHog Configuration
+trufflehog:
+  # Minimum entropy threshold to reduce false positives
+  entropy_threshold: 4.5
+  # Only report verified secrets
+  verified_only: true
+  # Exclude patterns that commonly cause false positives
+  exclude_patterns:
+    - "test_"
+    - "example_"
+    - "demo_"
+    - "fake_"
+    - "mock_"
+  # File patterns to exclude
+  exclude_files:
+    - "**/*.md"
+    - "**/*.txt"
+    - "**/test/**"
+    - "**/example/**"
+
+# CodeQL Configuration
+codeql:
+  # Severity levels to include
+  severity_levels:
+    - "error"
+    - "warning"
+  # Exclude query types that generate noise
+  exclude_queries:
+    - "informational"
+    - "note"
+  # Focus areas
+  security_focus:
+    - "injection"
+    - "authentication"
+    - "authorization"
+    - "encryption"
+    - "input-validation"
+
+# Trivy Configuration
+trivy:
+  # Severity levels to report
+  severity: "MEDIUM,HIGH,CRITICAL"
+  # CVE ignore list (if needed for known false positives)
+  ignore_unfixed: true
+  # Scanner types
+  scanners:
+    - "vuln"
+    - "secret"
+    - "config"
+
+# Semgrep Configuration
+semgrep:
+  # Rule sets to use
+  rules:
+    - "auto"  # Auto-detect based on language
+    - "security"
+    - "owasp-top-10"
+  # Severity threshold
+  severity:
+    - "WARNING"
+    - "ERROR"
+  # Confidence threshold
+  confidence: "medium"
+
+# General exclusions for all tools
+global_exclusions:
+  paths:
+    - "build/"
+    - ".dart_tool/"
+    - "android/build/"
+    - "ios/build/"
+    - "web/build/"
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - "**/*.gr.dart"
+    - "**/*.config.dart"
+  file_types:
+    - "*.lock"
+    - "*.log"
+    - "*.tmp"
+
+# False positive patterns to exclude
+false_positive_patterns:
+  secrets:
+    - "abcdef123456"  # Common test patterns
+    - "123456789"
+    - "password123"
+    - "secret123"
+    - "test_key"
+  vulnerabilities:
+    - "test-dependency"
+    - "dev-only-package"

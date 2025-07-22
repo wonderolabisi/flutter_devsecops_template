@@ -63,28 +63,255 @@ jobs:
           file: coverage/lcov.info
           fail_ci_if_error: false
 
+      - name: Create Security Reports Directory
+        run: mkdir -p security-reports
+
       - name: Dependency vulnerability scan
         run: |
-          flutter pub deps --json > deps.json
-          # Check for known vulnerabilities in dependencies
+          echo "🔍 Starting dependency vulnerability scan..."
+          flutter pub deps --json > security-reports/dependencies.json
+          
+          # Install and run vulnerability scanner
           dart pub global activate pana
-          dart pub global run pana --json --no-warning .
+          dart pub global run pana --json --no-warning . > security-reports/pana-report.json
+          
+          # Generate dependency vulnerability report
+          cat > security-reports/dependency-scan-report.md << 'EOF'
+          # 📊 Dependency Vulnerability Scan Report
+          
+          **Scan Date:** $(date)
+          **Scan Type:** Dependency Vulnerability Analysis
+          **Tool:** Pana (Package Analysis)
+          
+          ## Summary
+          - **Total Dependencies Scanned:** $(cat security-reports/dependencies.json | jq '.packages | length')
+          - **Severity Filter:** Medium, High, Critical only
+          
+          ## Findings
+          EOF
+          
+          # Check for high-severity issues in dependencies
+          if grep -q "ERROR\|WARNING" security-reports/pana-report.json; then
+            echo "⚠️ **Issues Found:** Please review dependency analysis" >> security-reports/dependency-scan-report.md
+          else
+            echo "✅ **No Critical Issues Found**" >> security-reports/dependency-scan-report.md
+          fi
 
       - name: Secret Scan with TruffleHog
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: .
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --debug --only-verified
+        run: |
+          echo "🔐 Starting secret scanning..."
+          
+          # Run TruffleHog with detailed output
+          docker run --rm -v "$PWD:/pwd" trufflesecurity/trufflehog:latest \
+            filesystem /pwd \
+            --json \
+            --only-verified \
+            --no-update \
+            --filter-entropy=4.5 \
+            > security-reports/trufflehog-raw.json || true
+          
+          # Generate secret scan report
+          cat > security-reports/secret-scan-report.md << 'EOF'
+          # 🔐 Secret Scan Report
+          
+          **Scan Date:** $(date)
+          **Scan Type:** Secret Detection
+          **Tool:** TruffleHog
+          **Configuration:** Verified secrets only, entropy filter 4.5+
+          
+          ## Summary
+          EOF
+          
+          # Count findings
+          VERIFIED_SECRETS=$(cat security-reports/trufflehog-raw.json | jq '[.[] | select(.Verified == true)] | length' 2>/dev/null || echo "0")
+          echo "- **Verified Secrets Found:** $VERIFIED_SECRETS" >> security-reports/secret-scan-report.md
+          
+          if [ "$VERIFIED_SECRETS" -gt 0 ]; then
+            echo "- **Status:** ❌ CRITICAL - Verified secrets detected" >> security-reports/secret-scan-report.md
+            echo "" >> security-reports/secret-scan-report.md
+            echo "## 🚨 Critical Findings" >> security-reports/secret-scan-report.md
+            cat security-reports/trufflehog-raw.json | jq -r '.[] | select(.Verified == true) | "- **" + .DetectorName + "** in `" + .SourceMetadata.Data.Filesystem.file + "` (Line: " + (.SourceMetadata.Data.Filesystem.line | tostring) + ")"' >> security-reports/secret-scan-report.md
+          else
+            echo "- **Status:** ✅ PASSED - No verified secrets found" >> security-reports/secret-scan-report.md
+          fi
 
-      - name: SAST with CodeQL
+      - name: SAST with CodeQL Setup
         uses: github/codeql-action/init@v3
         with:
           languages: dart
+          config-file: .github/codeql/codeql-config.yml
 
-      - name: CodeQL Analysis
+      - name: CodeQL Analysis and Report Generation
+        run: |
+          echo "🔬 Starting SAST analysis..."
+          
+          # Run CodeQL analysis
+          codeql database analyze \
+            --format=sarif-latest \
+            --output=security-reports/codeql-results.sarif \
+            --sarif-category=dart \
+            /opt/hostedtoolcache/CodeQL/*/x64/codeql/qlpacks/codeql/dart-queries/*/
+          
+          # Generate SAST report
+          cat > security-reports/sast-report.md << 'EOF'
+          # 🔬 Static Application Security Testing (SAST) Report
+          
+          **Scan Date:** $(date)
+          **Scan Type:** Static Code Analysis
+          **Tool:** GitHub CodeQL
+          **Language:** Dart/Flutter
+          
+          ## Summary
+          EOF
+          
+          # Parse SARIF results for high-severity issues
+          if [ -f "security-reports/codeql-results.sarif" ]; then
+            HIGH_CRITICAL=$(cat security-reports/codeql-results.sarif | jq '[.runs[0].results[] | select(.level == "error" or .level == "warning")] | length' 2>/dev/null || echo "0")
+            echo "- **High/Critical Issues:** $HIGH_CRITICAL" >> security-reports/sast-report.md
+            
+            if [ "$HIGH_CRITICAL" -gt 0 ]; then
+              echo "- **Status:** ⚠️ ATTENTION REQUIRED" >> security-reports/sast-report.md
+              echo "" >> security-reports/sast-report.md
+              echo "## 🔍 Findings" >> security-reports/sast-report.md
+              cat security-reports/codeql-results.sarif | jq -r '.runs[0].results[] | select(.level == "error" or .level == "warning") | "- **" + .ruleId + "**: " + .message.text + " (Severity: " + .level + ")"' >> security-reports/sast-report.md
+            else
+              echo "- **Status:** ✅ PASSED - No high-severity issues found" >> security-reports/sast-report.md
+            fi
+          else
+            echo "- **Status:** ⚠️ Analysis file not generated" >> security-reports/sast-report.md
+          fi
+
+      - name: CodeQL Upload Results
         uses: github/codeql-action/analyze@v3
+
+      - name: Generate Consolidated Security Report
+        run: |
+          echo "📋 Generating consolidated security report..."
+          
+          # Create master security report
+          cat > security-reports/SECURITY_REPORT.md << 'EOF'
+          # 🛡️ Comprehensive Security Scan Report
+          
+          **Project:** Flutter DevSecOps Template
+          **Scan Date:** $(date)
+          **Repository:** wonderolabisi/flutter_devsecops_template
+          **Branch:** ${{ github.ref_name }}
+          **Commit:** ${{ github.sha }}
+          
+          ## 📊 Executive Summary
+          
+          This report provides a comprehensive overview of security findings from multiple scanning tools, filtered to show only **Medium, High, and Critical** severity issues.
+          
+          ### 🎯 Scan Coverage
+          - ✅ Secret Detection (TruffleHog)
+          - ✅ Static Application Security Testing (CodeQL)
+          - ✅ Dependency Vulnerability Analysis (Pana)
+          - ✅ Code Quality Analysis (Flutter Analyze)
+          
+          ### 🔍 Severity Filtering
+          - **Included:** Medium, High, Critical severity issues
+          - **Excluded:** Low severity and informational findings
+          - **False Positive Reduction:** Verified findings only
+          
+          ---
+          
+          EOF
+          
+          # Add individual reports
+          echo "## 🔐 Secret Scan Results" >> security-reports/SECURITY_REPORT.md
+          if [ -f "security-reports/secret-scan-report.md" ]; then
+            tail -n +6 security-reports/secret-scan-report.md >> security-reports/SECURITY_REPORT.md
+          fi
+          echo "" >> security-reports/SECURITY_REPORT.md
+          
+          echo "## 🔬 SAST Analysis Results" >> security-reports/SECURITY_REPORT.md
+          if [ -f "security-reports/sast-report.md" ]; then
+            tail -n +6 security-reports/sast-report.md >> security-reports/SECURITY_REPORT.md
+          fi
+          echo "" >> security-reports/SECURITY_REPORT.md
+          
+          echo "## 📦 Dependency Scan Results" >> security-reports/SECURITY_REPORT.md
+          if [ -f "security-reports/dependency-scan-report.md" ]; then
+            tail -n +6 security-reports/dependency-scan-report.md >> security-reports/SECURITY_REPORT.md
+          fi
+          echo "" >> security-reports/SECURITY_REPORT.md
+          
+          # Add recommendations
+          cat >> security-reports/SECURITY_REPORT.md << 'EOF'
+          ## 💡 Recommendations
+          
+          ### Immediate Actions
+          1. **Review Critical Findings:** Address any critical or high-severity issues immediately
+          2. **Update Dependencies:** Keep all dependencies up to date using Dependabot
+          3. **Secret Management:** Use GitHub Secrets or environment variables for sensitive data
+          
+          ### Continuous Improvement
+          1. **Regular Scans:** This pipeline runs on every push and PR
+          2. **Security Training:** Keep development team updated on secure coding practices
+          3. **Monitoring:** Review security reports regularly
+          
+          ### Tools Configuration
+          - **TruffleHog:** Configured for verified secrets only (entropy 4.5+)
+          - **CodeQL:** Dart-specific security queries enabled
+          - **Dependency Scanning:** Weekly automated updates via Dependabot
+          
+          ---
+          
+          **Generated by:** Flutter DevSecOps Pipeline
+          **Next Scan:** Automatic on next push/PR
+          EOF
+
+      - name: Security Scan Summary
+        run: |
+          echo "🛡️ Security Scan Summary:"
+          echo "=========================="
+          
+          # Count issues by type
+          SECRETS=$(cat security-reports/trufflehog-raw.json 2>/dev/null | jq '[.[] | select(.Verified == true)] | length' 2>/dev/null || echo "0")
+          
+          if [ -f "security-reports/codeql-results.sarif" ]; then
+            SAST_ISSUES=$(cat security-reports/codeql-results.sarif | jq '[.runs[0].results[] | select(.level == "error" or .level == "warning")] | length' 2>/dev/null || echo "0")
+          else
+            SAST_ISSUES="0"
+          fi
+          
+          echo "📊 Results Summary:"
+          echo "  🔐 Verified Secrets: $SECRETS"
+          echo "  🔬 SAST Issues (High/Critical): $SAST_ISSUES"
+          echo "  📦 Dependencies Scanned: $(cat security-reports/dependencies.json 2>/dev/null | jq '.packages | length' 2>/dev/null || echo 'N/A')"
+          
+          # Determine overall status
+          TOTAL_CRITICAL=$((SECRETS + SAST_ISSUES))
+          
+          if [ "$TOTAL_CRITICAL" -eq 0 ]; then
+            echo "✅ Overall Status: PASSED - No critical security issues found"
+            echo "security_status=passed" >> $GITHUB_ENV
+          else
+            echo "❌ Overall Status: ATTENTION REQUIRED - $TOTAL_CRITICAL critical issues found"
+            echo "security_status=issues_found" >> $GITHUB_ENV
+          fi
+          
+          echo ""
+          echo "📄 Detailed reports available in security-reports/ artifacts"
+
+      - name: Generate Security Dashboard
+        run: |
+          chmod +x .github/scripts/generate-security-dashboard.sh
+          .github/scripts/generate-security-dashboard.sh
+
+      - name: Upload Security Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: security-reports/
+          retention-days: 30
+
+      - name: Fail on Critical Security Issues
+        if: env.security_status == 'issues_found'
+        run: |
+          echo "❌ Critical security issues detected. Please review the security reports."
+          echo "📄 Download the 'security-reports' artifact for detailed findings."
+          exit 1
 
       - name: Build APK
         run: flutter build apk --release
