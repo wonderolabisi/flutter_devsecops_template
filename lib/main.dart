@@ -50,9 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: ListView.builder(
                 itemCount: _items.length,
-                itemBuilder: (_, index) => ListTile(
-                  title: Text(_items[index]),
-                ),
+                itemBuilder: (_, index) => ListTile(title: Text(_items[index])),
               ),
             ),
           ],

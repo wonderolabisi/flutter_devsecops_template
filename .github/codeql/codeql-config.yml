@@ -1,0 +1,12 @@
+name: "Security Analysis Config"
+disable-default-queries: false
+queries:
+  - uses: security-and-quality
+  - uses: security-experimental
+
+paths-ignore:
+  - "**/*.g.dart"
+  - "**/*.freezed.dart"
+  - "**/generated/**"
+  - "build/**"
+  - ".dart_tool/**"

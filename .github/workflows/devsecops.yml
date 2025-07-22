@@ -2,43 +2,104 @@ name: Flutter DevSecOps Pipeline
 
 on: [push, pull_request]
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 jobs:
   devsecops:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for better security scanning
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.6'
+          flutter-version: '3.24.5'
+          channel: 'stable'
+          cache: true
+
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            **/.packages
+            **/.flutter-plugins
+            **/.flutter-plugin-dependencies
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze
+      - name: Verify Flutter installation
+        run: flutter doctor -v
+
+      - name: Analyze code quality
         run: flutter analyze
 
       - name: Format check
         run: dart format . --set-exit-if-changed
 
       - name: Run tests
-        run: flutter test
+        run: flutter test --coverage
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: coverage/lcov.info
+          fail_ci_if_error: false
+
+      - name: Dependency vulnerability scan
+        run: |
+          flutter pub deps --json > deps.json
+          # Check for known vulnerabilities in dependencies
+          dart pub global activate pana
+          dart pub global run pana --json --no-warning .
 
       - name: Secret Scan with TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
           path: .
-          base: HEAD~10
+          base: ${{ github.event.repository.default_branch }}
           head: HEAD
+          extra_args: --debug --only-verified
+
+      - name: SAST with CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: dart
+
+      - name: CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
 
       - name: Build APK
-        run: flutter build apk
+        run: flutter build apk --release
 
-      - name: Upload Build Artifact
+      - name: Build App Bundle
+        run: flutter build appbundle --release
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: flutter-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload App Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-bundle
+          path: build/app/outputs/bundle/release/app-release.aab
