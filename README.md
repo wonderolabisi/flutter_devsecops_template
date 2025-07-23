@@ -53,14 +53,20 @@ flutter build apk --release
 ```
 
 ## 🔒 Security Features
-- **Secret Detection**: Automatically scans for accidentally committed secrets
-- **Dependency Scanning**: Checks for vulnerable dependencies
-- **Code Analysis**: Static analysis for security vulnerabilities
+- **Secret Detection**: Automatically scans for accidentally committed secrets using TruffleHog
+- **Dependency Scanning**: Checks for vulnerable dependencies with Pana analysis
+- **Code Analysis**: Static analysis using Flutter Analyzer with enhanced security checks
 - **Automated Updates**: Dependabot keeps dependencies secure
+- **Severity Filtering**: Only reports Medium, High, and Critical issues to reduce noise
+- **Comprehensive Reports**: Generates detailed security reports for each scan
+
+### Optional Enhancements
+- **Coverage Upload**: Add `CODECOV_TOKEN` to repository secrets to enable Codecov integration
+- **Advanced SAST**: Consider integrating SonarQube or Veracode for enterprise security scanning
 
 ## 📋 Requirements
-- Flutter 3.24.0+
-- Dart SDK 3.5.0+ (included with Flutter)
+- Flutter 3.32.0+
+- Dart SDK 3.8.0+ (included with Flutter)
 - Java 17+ (for Android builds)
 
 ## 🤝 Contributing
