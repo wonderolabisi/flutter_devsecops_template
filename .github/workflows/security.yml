@@ -5,6 +5,7 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:  # Manual trigger
   schedule:
     - cron: '0 2 * * 1'  # Weekly on Monday at 2 AM
 
@@ -105,15 +106,6 @@ jobs:
             fi
           fi
 
-      - name: OSSAR Scan
-        uses: github/ossar-action@v1
-        id: ossar
-
-      - name: Upload OSSAR results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ${{ steps.ossar.outputs.sarifFile }}
-
       - name: Generate Consolidated Advanced Security Report
         run: |
           cat > advanced-security-reports/ADVANCED_SECURITY_REPORT.md << 'EOF'
@@ -128,7 +120,7 @@ jobs:
           ## 🎯 Advanced Scan Coverage
           - ✅ Container & Filesystem Security (Trivy)
           - ✅ Pattern-based Security Analysis (Semgrep)
-          - ✅ Microsoft Security DevOps (OSSAR)
+          - ✅ Container & Filesystem Security (Trivy)
           
           ### 🔧 Configuration
           - **Severity Threshold:** Medium, High, Critical
