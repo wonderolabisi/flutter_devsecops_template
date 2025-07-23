@@ -105,7 +105,7 @@ jobs:
             --only-verified \
             --no-update \
             --filter-entropy=4.5 \
-            > security-reports/trufflehog-raw.json || true
+            > security-reports/trufflehog-raw.json || echo "[]" > security-reports/trufflehog-raw.json
           
           # Generate secret scan report
           cat > security-reports/secret-scan-report.md << 'EOF'
@@ -138,7 +138,7 @@ jobs:
           
           # Enhanced Dart analysis with security focus
           echo "Running enhanced Dart analysis..."
-          flutter analyze --verbose 2>&1 | tee security-reports/dart-analysis.log || true
+          flutter analyze 2>&1 | tee security-reports/dart-analysis.log || true
           
           # Generate SAST report
           cat > security-reports/sast-report.md << 'EOF'
@@ -152,14 +152,18 @@ jobs:
           ## Summary
           EOF
           
-          # Check for critical issues in Dart analysis
-          if grep -i "error\|warning" security-reports/dart-analysis.log > /dev/null; then
-            ISSUE_COUNT=$(grep -ci "error\|warning" security-reports/dart-analysis.log || echo "0")
+          # Check for actual Flutter analyzer issues
+          # Look for real issues, not verbose debug output
+          if grep -q "No issues found!" security-reports/dart-analysis.log; then
+            echo "- **High/Critical Issues:** 0" >> security-reports/sast-report.md
+            echo "- **Status:** ✅ PASSED - No high-severity issues found" >> security-reports/sast-report.md
+          elif grep -E "(error •|warning •|Found [0-9]+ issue)" security-reports/dart-analysis.log > /dev/null; then
+            ISSUE_COUNT=$(grep -cE "(error •|warning •)" security-reports/dart-analysis.log || echo "0")
             echo "- **High/Critical Issues:** $ISSUE_COUNT" >> security-reports/sast-report.md
             echo "- **Status:** ⚠️ ATTENTION REQUIRED" >> security-reports/sast-report.md
             echo "" >> security-reports/sast-report.md
             echo "## 🔍 Findings" >> security-reports/sast-report.md
-            grep -i "error\|warning" security-reports/dart-analysis.log | head -20 | sed 's/^/- /' >> security-reports/sast-report.md || true
+            grep -E "(error •|warning •)" security-reports/dart-analysis.log | head -20 | sed 's/^/- /' >> security-reports/sast-report.md || true
           else
             echo "- **High/Critical Issues:** 0" >> security-reports/sast-report.md
             echo "- **Status:** ✅ PASSED - No high-severity issues found" >> security-reports/sast-report.md
@@ -251,7 +255,11 @@ jobs:
           SECRETS=$(cat security-reports/trufflehog-raw.json 2>/dev/null | jq '[.[] | select(.Verified == true)] | length' 2>/dev/null || echo "0")
           
           if [ -f "security-reports/dart-analysis.log" ]; then
-            SAST_ISSUES=$(grep -ci "error\|warning" security-reports/dart-analysis.log 2>/dev/null || echo "0")
+            if grep -q "No issues found!" security-reports/dart-analysis.log; then
+              SAST_ISSUES="0"
+            else
+              SAST_ISSUES=$(grep -cE "(error •|warning •)" security-reports/dart-analysis.log 2>/dev/null || echo "0")
+            fi
           else
             SAST_ISSUES="0"
           fi
